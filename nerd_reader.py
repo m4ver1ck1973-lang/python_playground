@@ -24,7 +24,7 @@ from textual.widgets import Footer, Header, Markdown, Static, Tree
 
 
 # ------------------------------------------------------------------------------
-# Helper Functions & Configuration Loader
+# Helper Functions, Configuration & History Loaders
 # ------------------------------------------------------------------------------
 
 def clean_html(raw_html: str) -> str:
@@ -34,6 +34,7 @@ def clean_html(raw_html: str) -> str:
 
 
 CONFIG_PATH = Path("feeds.json")
+HISTORY_PATH = Path("nerd_reader_history.json")
 
 DEFAULT_FEEDS = {
     "Tech News & Mobile": {
@@ -99,6 +100,27 @@ def load_feeds() -> dict[str, str]:
     return fallback_flat
 
 
+def load_history() -> set[str]:
+    """Load the set of read article URLs from JSON history file."""
+    if HISTORY_PATH.exists():
+        try:
+            data = json.loads(HISTORY_PATH.read_text(encoding="utf-8"))
+            if isinstance(data, list):
+                return set(data)
+        except Exception:
+            pass
+    return set()
+
+
+def save_history(history: set[str]) -> None:
+    """Save the set of read article URLs to JSON history file."""
+    try:
+        HISTORY_PATH.parent.mkdir(parents=True, exist_ok=True)
+        HISTORY_PATH.write_text(json.dumps(sorted(list(history)), indent=2), encoding="utf-8")
+    except Exception:
+        pass
+
+
 # ------------------------------------------------------------------------------
 # Application Class
 # ------------------------------------------------------------------------------
@@ -108,7 +130,7 @@ class NerdReader(App):
     
     CSS = """
     #feed-tree {
-        width: 38;  /* Set sidebar to 38 terminal characters wide */
+        width: 45;  /* Set sidebar to 45 terminal characters wide */
     }
 
     #content-pane {
@@ -145,6 +167,8 @@ class NerdReader(App):
     
     def on_mount(self) -> None:
         """Runs automatically when the app starts up."""
+        self.read_urls = load_history()
+
         feed_tree = self.query_one("#feed-tree", Tree)
         root = feed_tree.root
         root.label = "Nerd Feeds"
@@ -168,7 +192,6 @@ class NerdReader(App):
             self.notify("No article loaded to save!", severity="warning")
             return
 
-        # Explicitly cast title to str to convert Rich Text objects safely
         title_str = str(self.active_article_title)
 
         # Sanitize the title for a clean filename
@@ -216,7 +239,10 @@ class NerdReader(App):
         status_bar = self.query_one("#status-bar", Static)
 
         if node and node.label:
-            status_bar.update(f"[bold yellow]📌 {node.label}[/bold yellow]")
+            # Prefer unstyled raw title from node data
+            title = node.data.get("raw_title", str(node.label)) if node.data else str(node.label)
+            clean_title = re.sub(r"\[/?[^\]]+\]", "", str(title))
+            status_bar.update(f"[bold yellow]📌 {clean_title}[/bold yellow]")
         else:
             status_bar.update("")
 
@@ -225,14 +251,22 @@ class NerdReader(App):
         node = event.node
 
         if node.data:
-            self.active_link = node.data.get("link", "")
             link = node.data.get("link", "")
+            raw_title = node.data.get("raw_title", str(node.label))
+
+            # Mark link as read, save history, and dim the tree node in real-time
+            if link and link not in self.read_urls:
+                self.read_urls.add(link)
+                save_history(self.read_urls)
+                node.label = f"[dim]{raw_title}[/dim]"
+
+            self.active_link = link
             article_widget = self.query_one("#article-text", Markdown)
 
             article_widget.update("*(Fetching full article...)*")
 
             if link:
-                self.fetch_article_body(node.label, link, node.data.get("summary", ""))
+                self.fetch_article_body(raw_title, link, node.data.get("summary", ""))
 
     # --- Async Background Workers ---
 
@@ -260,12 +294,22 @@ class NerdReader(App):
 
         for entry in parsed_feed.entries[:5]:
             summary_text = entry.get("summary") or entry.get("description", "")
+            link = entry.get("link", "")
+            raw_title = entry.title
+
+            # Apply Rich styling: Dim if read, Bold if unread
+            if link in self.read_urls:
+                formatted_label = f"[dim]{raw_title}[/dim]"
+            else:
+                formatted_label = f"[bold]{raw_title}[/bold]"
+
             self.call_from_thread(
                 site_node.add_leaf,
-                entry.title,
+                formatted_label,
                 data={
                     "summary": summary_text,
-                    "link": entry.get("link", "")
+                    "link": link,
+                    "raw_title": raw_title
                 }
             )
 
@@ -296,7 +340,6 @@ class NerdReader(App):
                 clean_sum = "*No summary provided by feed.*"
             formatted_content = f"*(Error fetching article: {e})*\n\n{clean_sum}\n\n---\n**Source URL:** {link}"
 
-        # Store active article data as plain strings for export
         self.active_article_title = str(title)
         self.active_article_md = formatted_content
 

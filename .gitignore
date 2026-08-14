@@ -8,3 +8,10 @@ wheels/
 
 # Virtual environments
 .venv
+
+# Local user history & exports
+nerd_reader_history.json
+saved_articles/
+
+# Default feeds config (if you want feeds.json to stay local-only)
+# feeds.json
