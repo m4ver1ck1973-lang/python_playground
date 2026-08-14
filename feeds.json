@@ -1,13 +1,18 @@
 {
     "Tech News & Mobile": {
         "XDA Developers": "https://www.xda-developers.com/feed/",
-        "How-To Geek": "https://www.howtogeek.com/feed/",
-        "Ars Technica": "https://feeds.arstechnica.com/arstechnica/index"
+        "How-To Geek - Linux": "https://www.howtogeek.com/feed/category/linux/",
+        "Ars Technica - AI": "https://arstechnica.com/ai/feed/"
     },
     "Linux & Open Source": {
-        "Phoronix": "https://www.phoronix.com/phoronix-rss.php",
+        "LWN.net": "https://lwn.net/headlines/newrss",
         "OMG! Ubuntu!": "https://www.omgubuntu.co.uk/feed",
         "Techmint": "https://www.tecmint.com/feed/"
+    },
+    "AI & Machine Learning": {
+        "DeepMind Blog": "https://deepmind.com/blog/feed",
+        "Google AI Blog": "https://blog.google/technology/ai/rss/",
+        "Hugging Face Blog": "https://huggingface.co/blog/feed.xml"
     },
     "Homelab & Self-Hosting": {
         "Self-Hosted Podcast": "https://selfhosted.show/rss",

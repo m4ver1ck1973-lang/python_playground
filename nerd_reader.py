@@ -77,11 +77,9 @@ def load_feeds() -> dict[str, str]:
         if isinstance(data, dict):
             for key, val in data.items():
                 if isinstance(val, dict):
-                    # Category mapping: {"Category": {"Site": "URL"}}
                     for site_name, feed_url in val.items():
                         flat_feeds[site_name] = feed_url
                 elif isinstance(val, str):
-                    # Flat mapping: {"Site": "URL"}
                     flat_feeds[key] = val
             
             if flat_feeds:
@@ -89,7 +87,6 @@ def load_feeds() -> dict[str, str]:
     except Exception:
         pass
 
-    # Fallback flattening if loading fails
     fallback_flat = {}
     for key, val in DEFAULT_FEEDS.items():
         if isinstance(val, dict):
@@ -115,7 +112,6 @@ def load_history() -> set[str]:
 def save_history(history: set[str]) -> None:
     """Save the set of read article URLs to JSON history file."""
     try:
-        HISTORY_PATH.parent.mkdir(parents=True, exist_ok=True)
         HISTORY_PATH.write_text(json.dumps(sorted(list(history)), indent=2), encoding="utf-8")
     except Exception:
         pass
@@ -173,11 +169,14 @@ class NerdReader(App):
         root = feed_tree.root
         root.label = "Nerd Feeds"
 
-        feeds = load_feeds()
+        self.feeds = load_feeds()
 
-        for site_name, feed_url in feeds.items():
+        for site_name, feed_url in self.feeds.items():
             site_node = root.add(site_name, expand=False)
             self.fetch_feed(site_node, feed_url)
+
+        # Periodically refresh feeds in background every 5 minutes (300s)
+        self.set_interval(300, self.refresh_all_feeds)
 
     # --- Actions (Triggered via BINDINGS) ---
 
@@ -194,12 +193,10 @@ class NerdReader(App):
 
         title_str = str(self.active_article_title)
 
-        # Sanitize the title for a clean filename
         safe_title = re.sub(r"[^\w\s-]", "", title_str).strip()
         safe_title = re.sub(r"[-\s]+", "_", safe_title).lower()[:50]
         filename = f"{safe_title}.md"
 
-        # Save to 'saved_articles' directory
         output_dir = Path("saved_articles")
         output_dir.mkdir(exist_ok=True)
         file_path = output_dir / filename
@@ -239,10 +236,9 @@ class NerdReader(App):
         status_bar = self.query_one("#status-bar", Static)
 
         if node and node.label:
-            # Prefer unstyled raw title from node data
             title = node.data.get("raw_title", str(node.label)) if node.data else str(node.label)
             clean_title = re.sub(r"\[/?[^\]]+\]", "", str(title))
-            status_bar.update(f"[bold yellow]📌 {clean_title}[/bold yellow]")
+            status_bar.update(f"[bold lightgreen]📖 {clean_title}[/bold lightgreen]")
         else:
             status_bar.update("")
 
@@ -254,7 +250,6 @@ class NerdReader(App):
             link = node.data.get("link", "")
             raw_title = node.data.get("raw_title", str(node.label))
 
-            # Mark link as read, save history, and dim the tree node in real-time
             if link and link not in self.read_urls:
                 self.read_urls.add(link)
                 save_history(self.read_urls)
@@ -271,7 +266,16 @@ class NerdReader(App):
     # --- Async Background Workers ---
 
     @work(exclusive=False, thread=True)
-    def fetch_feed(self, site_node, feed_url: str) -> None:
+    def refresh_all_feeds(self) -> None:
+        """Background worker that periodically checks all feeds for new posts."""
+        feed_tree = self.query_one("#feed-tree", Tree)
+        for site_node in feed_tree.root.children:
+            site_name = str(site_node.label)
+            if site_name in self.feeds:
+                self.fetch_feed(site_node, self.feeds[site_name], is_refresh=True)
+
+    @work(exclusive=False, thread=True)
+    def fetch_feed(self, site_node, feed_url: str, is_refresh: bool = False) -> None:
         """Background worker thread to fetch feeds without UI freezing."""
         headers = {
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
@@ -289,29 +293,43 @@ class NerdReader(App):
             parsed_feed = feedparser.parse(feed_url)
 
         if not parsed_feed.entries:
-            self.call_from_thread(site_node.add_leaf, "[No posts found or feed blocked]", data={})
+            if not is_refresh:
+                self.call_from_thread(site_node.add_leaf, "[No posts found or feed blocked]", data={})
             return
 
-        for entry in parsed_feed.entries[:5]:
-            summary_text = entry.get("summary") or entry.get("description", "")
+        existing_links = set()
+        if is_refresh:
+            for child in site_node.children:
+                if child.data and "link" in child.data:
+                    existing_links.add(child.data["link"])
+
+        for entry in parsed_feed.entries[:10]:  # Limit to 10 most recent entries
             link = entry.get("link", "")
+            
+            if is_refresh and link in existing_links:
+                continue
+
+            summary_text = entry.get("summary") or entry.get("description", "")
             raw_title = entry.title
 
-            # Apply Rich styling: Dim if read, Bold if unread
             if link in self.read_urls:
-                formatted_label = f"[dim]{raw_title}[/dim]"
+                formatted_label = f"[dim #7f848e]{raw_title}[/dim #7f848e]"
             else:
-                formatted_label = f"[bold]{raw_title}[/bold]"
+                formatted_label = f"[bold #61afef]{raw_title}[/bold #61afef]"
 
-            self.call_from_thread(
-                site_node.add_leaf,
-                formatted_label,
-                data={
-                    "summary": summary_text,
-                    "link": link,
-                    "raw_title": raw_title
-                }
-            )
+            if is_refresh:
+                self.call_from_thread(
+                    site_node.add_leaf,
+                    formatted_label,
+                    data={"summary": summary_text, "link": link, "raw_title": raw_title},
+                    at_index=0
+                )
+            else:
+                self.call_from_thread(
+                    site_node.add_leaf,
+                    formatted_label,
+                    data={"summary": summary_text, "link": link, "raw_title": raw_title}
+                )
 
     @work(exclusive=False, thread=True)
     def fetch_article_body(self, title: str, link: str, summary: str) -> None:
