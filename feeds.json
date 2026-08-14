@@ -1,0 +1,25 @@
+{
+    "Tech News & Mobile": {
+        "XDA Developers": "https://www.xda-developers.com/feed/",
+        "How-To Geek": "https://www.howtogeek.com/feed/",
+        "Ars Technica": "https://feeds.arstechnica.com/arstechnica/index"
+    },
+    "Linux & Open Source": {
+        "Phoronix": "https://www.phoronix.com/phoronix-rss.php",
+        "OMG! Ubuntu!": "https://www.omgubuntu.co.uk/feed",
+        "Techmint": "https://www.tecmint.com/feed/"
+    },
+    "Homelab & Self-Hosting": {
+        "Self-Hosted Podcast": "https://selfhosted.show/rss",
+        "Kube8s & DevOps (CNCF)": "https://www.cncf.io/feed/",
+        "ServeTheHome": "https://www.servethehome.com/feed/"
+    },
+    "Python & Development": {
+        "Real Python": "https://realpython.com/atom.xml",
+        "Python Software Foundation": "https://blog.python.org/feeds/posts/default",
+        "Talk Python To Me": "https://talkpython.fm/episodes/rss"
+    },
+    "Community & Aggregators": {
+        "Hacker News": "https://news.ycombinator.com/rss"
+    }
+}
